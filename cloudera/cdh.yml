@@ -1,0 +1,74 @@
+networks:
+  cdh_network:
+    driver: overlay
+    attachable: true
+services:  
+  server:
+    image: nwang92/cdh:latest
+    command: server
+    ports:
+      - "2222"
+      - "7180"
+      - "7182"
+      - "7432"
+      - "35479"
+
+  node1:
+    image: nwang92/cdh:latest
+    command: agent
+    hostname: node1
+    volumes:
+      - /var
+      - /tmp
+      - /opt/cloudera
+    ports:
+      - "2222"
+      - "8088"
+      - "19888"
+      - "50070"
+      - "50075"
+
+  node2:
+    image: nwang92/cdh:latest
+    command: agent
+    hostname: node2
+    volumes:
+      - /var
+      - /tmp
+      - /opt/cloudera
+    ports:
+      - "2222"
+      - "8088"
+      - "19888"
+      - "50070"
+      - "50075"
+
+  node3:
+    image: nwang92/cdh:latest
+    command: agent
+    hostname: node3
+    volumes:
+      - /var
+      - /tmp
+      - /opt/cloudera
+    ports:
+      - "2222"
+      - "8088"
+      - "19888"
+      - "50070"
+      - "50075"
+
+  node4:
+    image: nwang92/cdh:latest
+    command: agent
+    hostname: node4
+    volumes:
+      - /var
+      - /tmp
+      - /opt/cloudera
+    ports:
+      - "2222"
+      - "8088"
+      - "19888"
+      - "50070"
+      - "50075"

@@ -1,0 +1,40 @@
+FROM ubuntu:16.04
+
+ARG AMBARI_VERSION=2.5.1
+ENV AMBARI_VERSION ${AMBARI_VERSION:-2.5.1}
+ENV DEBIAN_FRONTEND noninteractive 
+ENV DEBCONF_NONINTERACTIVE_SEEN true
+
+# Copy files in
+COPY entrypoint.sh /sbin/
+COPY sshd_config /etc/ssh/sshd_config
+COPY ambari-shell.jar /root/
+
+# Setup SSH
+RUN chown -R root:root /root && \
+    mkdir /root/.ssh && \
+    chmod 700 /root/.ssh && \
+    touch /root/.ssh/authorized_keys && \
+    chmod 600 /root/.ssh/authorized_keys
+
+# Install basic dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    software-properties-common \
+    wget \
+    openssh-server \
+    python
+
+# Install Ambari
+RUN wget -O /etc/apt/sources.list.d/ambari.list http://public-repo-1.hortonworks.com/ambari/ubuntu16/2.x/updates/2.5.1.0/ambari.list && \
+    apt-key adv --recv-keys --keyserver keyserver.ubuntu.com B9733A7A07513CAD && \
+    apt-get update && \
+    apt-get install -y \
+    ambari-server \
+    ambari-agent
+
+# These are the ports used by ambari-server/ambari-agent
+EXPOSE 2222 5432 8080 8440 8441 8670 8088 50070
+
+ENTRYPOINT [ "/sbin/entrypoint.sh" ]
+CMD [ "server" ]

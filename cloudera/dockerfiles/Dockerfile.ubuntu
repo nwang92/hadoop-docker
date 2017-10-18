@@ -1,0 +1,90 @@
+FROM ubuntu:16.04
+
+ARG CDH_VERSION=5.12.0
+ENV CDH_VERSION ${CDH_VERSION:-5.12.0}
+ENV DEBIAN_FRONTEND noninteractive 
+ENV DEBCONF_NONINTERACTIVE_SEEN true
+
+# Copy files in
+COPY entrypoint.sh /sbin/
+COPY sshd_config /etc/ssh/sshd_config
+
+# Setup SSH
+RUN chown -R root:root /root && \
+    mkdir /root/.ssh && \
+    chmod 700 /root/.ssh && \
+    touch /root/.ssh/authorized_keys && \
+    chmod 600 /root/.ssh/authorized_keys
+
+# Install basic dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    locales \
+    software-properties-common \
+    wget \
+    openssh-server \
+    python && \
+    localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
+ENV LANG en_US.utf8
+
+# Install CDH
+RUN wget -O /etc/apt/sources.list.d/cloudera.list https://archive.cloudera.com/cdh5/ubuntu/xenial/amd64/cdh/cloudera.list && \
+    echo "deb [arch=amd64] http://archive.cloudera.com/cm5/ubuntu/xenial/amd64/cm xenial-cm5 contrib" >> /etc/apt/sources.list.d/cloudera.list && \
+    echo "deb-src http://archive.cloudera.com/cm5/ubuntu/xenial/amd64/cm xenial-cm5 contrib" >> /etc/apt/sources.list.d/cloudera.list && \
+    wget -O archive.key https://archive.cloudera.com/cdh5/ubuntu/xenial/amd64/cdh/archive.key && \
+    apt-key add archive.key && \
+    wget -O archive.key https://archive.cloudera.com/cm5/ubuntu/xenial/amd64/cm/archive.key && \
+    apt-key add archive.key && \
+    apt-get update && \
+    apt-get install -y \
+    oracle-j2sdk1.7 \
+    cloudera-manager-server-db-2 \
+    cloudera-manager-server \
+    cloudera-manager-agent \
+    cloudera-manager-daemons && \
+    #avro-tools \
+    #crunch \
+    #flume-ng \
+    #hadoop-hdfs-fuse \
+    #hadoop-hdfs-nfs3 \
+    #hadoop-httpfs \
+    #hadoop-kms \
+    #hbase-solr \
+    #hive-hbase \
+    #hive-webhcat \
+    #hue-beeswax \
+    #hue-hbase \
+    #hue-impala \
+    #hue-pig \
+    #hue-plugins \
+    #hue-rdbms \
+    #hue-search \
+    #hue-spark \
+    #hue-sqoop \
+    #hue-zookeeper \
+    #impala \
+    #impala-shell \
+    #kite \
+    #llama \
+    #mahout \
+    #oozie \
+    #pig \
+    #pig-udf-datafu \
+    #search \
+    #sentry \
+    #solr-mapreduce \
+    #spark-core \
+    #spark-master \
+    #spark-worker \
+    #spark-history-server \
+    #spark-python \
+    #sqoop \
+    #sqoop2 \
+    #whirr && \
+    rm -rf /var/lib/apt/lists/*
+
+# These are the ports used by cloudera-scm-server/cloudera-scm-agent
+EXPOSE 2222 5432 8080 8440 8441 8670 8088 50070
+
+ENTRYPOINT [ "/sbin/entrypoint.sh" ]
+CMD [ "server" ]

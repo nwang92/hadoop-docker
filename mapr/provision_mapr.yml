@@ -1,0 +1,164 @@
+---
+- hosts: all
+  tasks:
+
+    - name: Check if container can be configured as MAPR node
+      stat: 
+        path: /opt/mapr/server/configure.sh
+      register: mapr_node
+
+    - debug: var=mapr_node
+
+    - name: Create group of nodes
+      group_by: key=mapr_nodes
+      when: mapr_node.stat.exists == True
+
+    - name: Check that there exists at least 4 MAPR nodes available
+      fail:
+        msg: "Please use at least 4 MAPR nodes."
+      when: groups['mapr_nodes'] | length < 4
+
+- hosts: mapr_nodes
+  tasks:
+
+    # Sort/filter containers so that they can be defined by their role in the cluster
+    - name: Sort list of mapr_nodes
+      set_fact: 
+        nodes: "{{ groups['mapr_nodes'] | sort }}"
+
+    - name: Define CLDB node
+      add_host:
+        name: "{{ nodes[0] }}"
+        groups: cldb_node
+
+    - name: Define Zookeeper nodes
+      add_host:
+        name: "{{ item }}"
+        groups: zookeeper_nodes
+      with_items:
+        - "{{ nodes[0] }}"
+
+    # Create new UUID for each node
+    - name: Generate new hostid/uuid for each node
+      command: /opt/mapr/server/mruuidgen
+      register: mruuidgen
+
+    - name: Write hostid/uuid to file
+      copy:
+        content: "{{ mruuidgen.stdout }}"
+        dest: /opt/mapr/hostid
+        owner: root
+        group: root
+        mode: 0444
+
+    # There's a UI error when this dir doesn't exist, so..............yeah
+    - name: Create /opt/mapr/mapr-cli-audit-log because WHY???????
+      file:
+        path: /opt/mapr/mapr-cli-audit-log
+        state: directory
+        mode: 0777
+
+    # Modify MAPR subnet
+    - name: Modify MAPR_SUBNET environment variable
+      lineinfile:
+        dest: /opt/mapr/conf/env.sh
+        regexp: '^#export MAPR_SUBNETS='
+        line: 'export MAPR_SUBNETS=10.0.0.0/8'
+
+    # Do this because docs say so
+    - name: Create /root/storagefile file
+      command: dd if=/dev/zero of=/root/storagefile bs=1G count=20
+
+    - name: Set permissions
+      file:
+        path: /root
+        recurse: yes
+        mode: 0755
+
+- hosts: mapr_nodes:!zookeeper_nodes
+  tasks:
+
+    # We need to uninstall mapr-zookeeper on non-zookeeper nodes because configure.sh says so
+    - name: Uninstall mapr-zookeeper
+      apt:
+        name: mapr-zookeeper
+        state: absent
+
+- hosts: mapr_nodes:!cldb_node
+  tasks:
+
+    # According to recommended topology, non-CLDB nodes should not have mapr-cldb service
+    - name: Uninstall mapr-cldb
+      apt:
+        name: mapr-cldb
+        state: absent
+
+   # According to recommended topology, non-webserver nodes should not have mapr-webserver service
+    - name: Uninstall mapr-webserver
+      apt:
+        name: mapr-webserver
+        state: absent
+
+- hosts: mapr_nodes
+  vars:
+    mapr:
+      cluster_name: demo.splunk.com
+      user: root
+      group: root
+      plaintext_pw: hello
+      hashed_pw: $6$guu4CbKUqeAUwcll$a2AKbLHdIxA9.c4fZz5LuzasNiIQbRk1Gto0mFF.4Sv64TOl4JZ9qy5IDjxLni/nOYoUTA6RYlShcQOkslNxS.
+  tasks:
+
+    # Set user password because this will be our MAPR login credentials
+    - name: Change root user password
+      user: 
+        name: root 
+        group: root 
+        password: "{{ mapr.hashed_pw }}"
+
+    # Start rpcbind for NFS - only one node is needed for this, so it's easy to pick the CLDB node
+    - name: Start rpcbind on CLDB node
+      service:
+        name: rpcbind
+        state: started
+      when: "'cldb_node' in group_names"
+
+    #
+    # TODO: Add MAPR license here, otherwise NFS goes down immediately 
+    #       with error msg: "No license to run NFS server in servermode" 
+    #
+
+    # Run configure.sh on the CLDB node first
+    - name: Run configure.sh script on CLDB nodes
+      command: "/opt/mapr/server/configure.sh -C {% for node in groups['cldb_node'] %}{{ hostvars[node]['docker_config']['Hostname'] }}{% if not loop.last %},{% endif %}{% endfor %} -Z {% for node in groups['zookeeper_nodes'] %}{{ hostvars[node]['docker_config']['Hostname'] }}{% if not loop.last %},{% endif %}{% endfor %} -D /root/storagefile -N {{ mapr.cluster_name }} -u {{ mapr.user }} -g {{ mapr.group }} -on-prompt-cont y -noDB"
+      register: configure_output
+      when: "'cldb_node' in group_names"
+
+    - name: Poll /rest/service/list to make sure the webserver is running
+      uri:
+        url: "https://127.0.0.1:8443/rest/service/list?node={{ docker_config.Hostname }}"
+        method: GET
+        user: "{{ mapr.user }}"
+        password: "{{ mapr.plaintext_pw }}"
+        force_basic_auth: yes
+        return_content: yes
+        validate_certs: no
+      when: "'cldb_node' in group_names"
+      register: cldb_status
+      until: 
+        - cldb_status.json is defined 
+        - cldb_status.json.status is defined 
+        - cldb_status.json.status == 'OK'
+      delay: 10
+      retries: 60
+
+    - debug: var=cldb_status
+
+    # Run configure.sh on the all other MAPR nodes
+    - name: Run configure.sh script on remaining MAPR nodes
+      command: "/opt/mapr/server/configure.sh -C {% for node in groups['cldb_node'] %}{{ hostvars[node]['docker_config']['Hostname'] }}{% if not loop.last %},{% endif %}{% endfor %} -Z {% for node in groups['zookeeper_nodes'] %}{{ hostvars[node]['docker_config']['Hostname'] }}{% if not loop.last %},{% endif %}{% endfor %} -D /root/storagefile -N {{ mapr.cluster_name }} -u {{ mapr.user }} -g {{ mapr.group }} -on-prompt-cont y -noDB"
+      register: configure_output
+      when: "'cldb_node' not in group_names"
+
+    - debug: var=configure_output
+      when: configure_output is defined

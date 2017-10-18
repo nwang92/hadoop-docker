@@ -1,0 +1,115 @@
+{
+  "name": "mgmt",
+  "type": "MGMT",
+  "roles": [
+    {
+      "name": "mgmt-SERVICEMONITOR",
+      "type": "SERVICEMONITOR",
+      "roleConfigGroupRef": {
+        "roleConfigGroupName": "mgmt-SERVICEMONITOR-BASE"
+      },
+      "hostRef": {
+        "hostId": "{{ hostvars[nodes[1]]['docker_config']['Hostname'] }}"
+      }
+    }, {
+      "name": "mgmt-HOSTMONITOR",
+      "type": "HOSTMONITOR",
+      "roleConfigGroupRef": {
+        "roleConfigGroupName": "mgmt-HOSTMONITOR-BASE"
+      },
+      "hostRef": {
+        "hostId": "{{ hostvars[nodes[1]]['docker_config']['Hostname'] }}"
+      }
+    }, {
+      "name": "mgmt-REPORTSMANAGER",
+      "type": "REPORTSMANAGER",
+      "roleConfigGroupRef": {
+        "roleConfigGroupName": "mgmt-REPORTSMANAGER-BASE"
+      },
+      "hostRef": {
+        "hostId": "{{ hostvars[nodes[1]]['docker_config']['Hostname'] }}"
+      }
+    }, {
+      "name": "mgmt-EVENTSERVER",
+      "type": "EVENTSERVER",
+      "roleConfigGroupRef": {
+        "roleConfigGroupName": "mgmt-EVENTSERVER-BASE"
+      },
+      "hostRef": {
+        "hostId": "{{ hostvars[nodes[1]]['docker_config']['Hostname'] }}"
+      }
+    }, {
+      "name": "mgmt-ALERTPUBLISHER",
+      "type": "ALERTPUBLISHER",
+      "roleConfigGroupRef": {
+        "roleConfigGroupName": "mgmt-ALERTPUBLISHER-BASE"
+      },
+      "hostRef": {
+        "hostId": "{{ hostvars[nodes[1]]['docker_config']['Hostname'] }}"
+      }
+    } 
+  ],
+  "roleConfigGroups": [
+    {
+      "name": "mgmt-SERVICEMONITOR-BASE",
+      "displayName": "Service Monitor Default Group",
+      "roleType": "SERVICEMONITOR",
+      "base": "true",
+      "serviceRef": {
+        "serviceName": "mgmt"
+      }
+    }, {
+      "name": "mgmt-HOSTMONITOR-BASE",
+      "displayName": "Host Monitor Default Group",
+      "roleType": "HOSTMONITOR",
+      "base": "true",
+      "serviceRef": {
+        "serviceName": "mgmt"
+      }
+    }, {
+      "name": "mgmt-EVENTSERVER-BASE",
+      "displayName": "Event Server Default Group",
+      "roleType": "EVENTSERVER",
+      "base": "true",
+      "serviceRef": {
+        "serviceName": "mgmt"
+      }
+    }, {
+      "name": "mgmt-ALERTPUBLISHER-BASE",
+      "displayName": "Alert Publisher Default Group",
+      "roleType": "ALERTPUBLISHER",
+      "base": "true",
+      "serviceRef": {
+        "serviceName": "mgmt"
+      }
+    }, {
+      "name": "mgmt-REPORTSMANAGER-BASE",
+      "displayName": "Reports Manager Default Group",
+      "roleType": "REPORTSMANAGER",
+      "base": "true",
+      "serviceRef": {
+        "serviceName": "mgmt"
+      },
+      "config": {
+        "items": [
+          {
+            "name": "headlamp_database_host",
+            "value": "{{ hostvars[groups['cdh_servers'][0]]['docker_config']['Hostname'] }}:7432"
+          }, {
+            "name": "headlamp_database_name",
+            "value": "rman"
+          }, {
+            "name": "headlamp_database_password",
+            "value": "{{ rman_pw }}"
+          }, {
+            "name": "headlamp_database_type",
+            "value": "postgresql"
+          }, {
+            "name": "headlamp_database_user",
+            "value": "rman"
+          }
+        ]
+      }
+    }
+  ]
+}

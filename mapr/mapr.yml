@@ -1,0 +1,72 @@
+networks:
+  mapr_network:
+    driver: overlay
+    attachable: true
+services: 
+  node1:
+    image: nwang92/mapr:latest
+    hostname: node1
+    volumes:
+      - /root
+    ports:
+      - "2222"
+      - "2888"
+      - "3888"
+      - "5181"
+      - "7220"
+      - "7221"
+      - "7222"
+      - "7443"
+      - "8443"
+      - "8090"
+
+  node2:
+    image: nwang92/mapr:latest
+    hostname: node2
+    volumes:
+      - /root
+    ports:
+      - "2222"
+      - "2888"
+      - "3888"
+      - "5181"
+      - "7220"
+      - "7221"
+      - "7222"
+      - "7443"
+      - "8443"
+      - "8090"
+
+  node3:
+    image: nwang92/mapr:latest
+    hostname: node3
+    volumes:
+      - /root
+    ports:
+      - "2222"
+      - "2888"
+      - "3888"
+      - "5181"
+      - "7220"
+      - "7221"
+      - "7222"
+      - "7443"
+      - "8443"
+      - "8090"
+
+  node4:
+    image: nwang92/mapr:latest
+    hostname: node4
+    volumes:
+      - /root
+    ports:
+      - "2222"
+      - "2888"
+      - "3888"
+      - "5181"
+      - "7220"
+      - "7221"
+      - "7222"
+      - "7443"
+      - "8443"
+      - "8090"

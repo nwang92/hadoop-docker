@@ -1,0 +1,124 @@
+{
+  "displayName" : "{{ cdh['cluster_name'] }}",
+  "cmVersion" : "{{ cdh['version'] }}",
+  "cdhVersion" : "{{ cdh['version'] }}",
+  "repositories" : [ "https://archive.cloudera.com/cdh5/parcels/{{ cdh['version'] }}", "https://archive.cloudera.com/cdh5/parcels/", "https://archive.cloudera.com/cdh4/parcels/latest/", "https://archive.cloudera.com/impala/parcels/latest/", "https://archive.cloudera.com/search/parcels/latest/", "https://archive.cloudera.com/accumulo/parcels/1.4/", "https://archive.cloudera.com/accumulo-c5/parcels/latest/", "https://archive.cloudera.com/kafka/parcels/latest/", "http://archive.cloudera.com/kudu/parcels/latest/", "https://cloudera.com/downloads/", "https://archive.cloudera.com/spark/parcels/latest/", "https://archive.cloudera.com/sqoop-connectors/parcels/latest/" ],
+  "products" : [ {
+    "version" : "{{ cdh['product_version'] }}",
+    "product" : "{{ cdh['product'] }}"
+  } ],
+  "services" : [ {
+    "refName" : "zookeeper",
+    "serviceType" : "ZOOKEEPER",
+    "roleConfigGroups" : [ {
+      "refName" : "zookeeper-SERVER-BASE",
+      "roleType" : "SERVER",
+      "configs": [ {
+        "name": "dataDir",
+        "value": "/opt/cloudera/hadoop/zookeeper"
+      }, {
+        "name": "dataLogDir",
+        "value": "/opt/cloudera/hadoop/zookeeper"
+      }],
+      "base" : "true"
+    } ]
+  }, {
+    "refName" : "yarn",
+    "serviceType" : "YARN",
+    "roleConfigGroups" : [ {
+      "refName" : "yarn-RESOURCEMANAGER-BASE",
+      "roleType" : "RESOURCEMANAGER",
+      "configs" : [ {
+      	"name": "yarn_rm_bind_wildcard",
+      	"value": "true"
+      } ],
+      "base" : "true"
+    }, {
+      "refName" : "yarn-JOBHISTORY-BASE",
+      "roleType" : "JOBHISTORY",
+      "configs" : [ {
+      	"name": "yarn_jobhistory_bind_wildcard",
+      	"value": "true"
+      } ],
+      "base" : "true"
+    }, {
+      "refName" : "yarn-NODEMANAGER-BASE",
+      "roleType" : "NODEMANAGER",
+      "configs": [ {
+        "name": "yarn_nodemanager_local_dirs",
+        "value": "/opt/cloudera/hadoop/yarn/nm"
+      }, {
+        "name": "yarn_nodemanager_log_dirs",
+        "value": "/var/log/hadoop-yarn/container"
+      }],
+      "base" : "true"
+    } ]
+  }, {
+    "refName" : "hdfs",
+    "serviceType" : "HDFS",
+    "roleConfigGroups" : [ {
+      "refName" : "hdfs-DATANODE-BASE",
+      "roleType" : "DATANODE",
+      "configs": [ {
+        "name": "dfs_data_dir_list",
+        "value": "/opt/cloudera/hadoop/dfs/data,/opt/cloudera/hadoop/dfs/data2"
+      }, {
+        "name": "dfs_datanode_bind_wildcard",
+        "value": "true"
+      }, {
+        "name": "dfs_datanode_failed_volumes_tolerated",
+        "value": "0"
+      }, {
+        "name": "dfs_datanode_max_locked_memory",
+        "value": "65536"
+      } ],
+      "base" : "true"
+    }, {
+      "refName" : "hdfs-NAMENODE-BASE",
+      "roleType" : "NAMENODE",
+      "configs": [ {
+        "name": "namenode_bind_wildcard",
+        "value": "true"
+      }, {
+        "name": "dfs_name_dir_list",
+        "value": "/opt/cloudera/hadoop/dfs/name"
+      } ],
+      "base" : "true"
+    }, {
+      "refName" : "hdfs-BALANCER-BASE",
+      "roleType" : "BALANCER",
+      "base" : "true"
+    }, {
+      "refName" : "hdfs-SECONDARYNAMENODE-BASE",
+      "roleType" : "SECONDARYNAMENODE",
+      "configs": [ {
+        "name": "fs_checkpoint_dir_list",
+        "value": "/opt/cloudera/hadoop/dfs/snn"
+      } ],
+      "base" : "true"
+    } ]
+  } ] ,
+  "hostTemplates" : [ {
+    "refName" : "slave-nodes",
+    "cardinality" : "{{ nodes[1:]|length}}",
+    "roleConfigGroupsRefNames" : [ "hdfs-DATANODE-BASE", "yarn-NODEMANAGER-BASE" ]
+  }, {
+    "refName" : "master-nodes",
+    "cardinality" : "1",
+    "roleConfigGroupsRefNames" : [ "hdfs-BALANCER-BASE", "hdfs-NAMENODE-BASE", "hdfs-SECONDARYNAMENODE-BASE", "yarn-JOBHISTORY-BASE", "yarn-RESOURCEMANAGER-BASE", "zookeeper-SERVER-BASE" ]
+  } ],
+  "instantiator" : {
+    "clusterName" : "{{ cdh['cluster_name'] }}",
+    "hosts" : [ {
+      "hostName" : "{{ hostvars[nodes[0]]['docker_config']['Hostname'] }}",
+      "hostTemplateRefName" : "master-nodes"
+    }, 
+    {% for host in nodes[1:] %}
+    {
+      "hostName" : "{{ hostvars[host]['docker_config']['Hostname'] }}",
+      "hostTemplateRefName" : "slave-nodes"
+    }{% if not loop.last %},{% endif %}
+    {% endfor %} 
+    ]
+  }
+}

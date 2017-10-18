@@ -1,0 +1,57 @@
+FROM ubuntu:14.04
+
+ARG MAPR_VERSION=5.2.2
+ENV MAPR_VERSION ${MAPR_VERSION:-5.2.2}
+ENV DEBIAN_FRONTEND noninteractive 
+ENV DEBCONF_NONINTERACTIVE_SEEN true
+
+# Copy files in
+COPY entrypoint.sh /sbin/
+COPY sshd_config /etc/ssh/sshd_config
+
+# Setup SSH
+RUN chown -R root:root /root && \
+    mkdir /root/.ssh && \
+    chmod 700 /root/.ssh && \
+    touch /root/.ssh/authorized_keys && \
+    chmod 600 /root/.ssh/authorized_keys
+
+# Install basic dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    locales \
+    software-properties-common \
+    wget \
+    openssh-server \
+    vim \
+    iputils-ping \
+    net-tools \
+    openjdk-7-jdk \
+    python && \
+    localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
+ENV LANG en_US.utf8
+
+# Install MAPR 
+RUN echo "deb http://package.mapr.com/releases/v5.2.2/ubuntu binary trusty" >> /etc/apt/sources.list && \
+    echo "deb http://package.mapr.com/releases/MEP/MEP-3.0.1/ubuntu binary trusty" >> /etc/apt/sources.list && \
+    wget -O archive.key http://package.mapr.com/releases/pub/maprgpg.key && \
+    apt-key add archive.key && \
+    apt-get update && \
+    apt-get install -y \
+    mapr-fileserver \
+    mapr-cldb \
+    mapr-zookeeper \
+    mapr-nfs \
+    mapr-webserver \
+    mapr-gateway \
+    mapr-resourcemanager \
+    mapr-nodemanager \
+    mapr-historyserver \
+    mapr-collectd \
+    mapr-grafana \
+    mapr-opentsdb && \
+    rm -rf /var/lib/apt/lists/*
+
+EXPOSE 2222 7222 5181 8443
+
+ENTRYPOINT [ "/sbin/entrypoint.sh" ]

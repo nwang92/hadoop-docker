@@ -1,0 +1,26 @@
+{
+  "blueprint" : "{{ ambari['blueprint_name'] }}",
+  "default_password" : "{{ ambari['password'] }}",
+  "host_groups" :[
+    {
+      "name" : "masters",
+      "hosts" : [
+        {
+          "fqdn" : "{{ hostvars[nodes[0]]['docker_config']['Hostname'] }}"
+        }
+      ]
+    },
+    {
+      "name" : "slaves",
+      "hosts" : [
+      {% for host in nodes[1:] %}
+        {
+          "fqdn" : "{{ hostvars[host]['docker_config']['Hostname'] }}"
+        }{% if not loop.last %}
+        ,
+        {% endif %}
+      {% endfor %}
+      ]
+    }
+  ]
+}

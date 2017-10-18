@@ -1,0 +1,153 @@
+---
+- hosts: all
+  tasks:
+
+    - name: Check if ambari-agent is running
+      command: ambari-agent status
+      register: agent_status
+      failed_when: "'command not found' in agent_status.stderr"
+      changed_when: "'ambari-agent running' in agent_status.stdout"
+
+    - name: Create group of agents
+      group_by: key=ambari_agents
+      when: 
+        - agent_status is defined
+        - agent_status.rc|int == 0
+
+    - name: Check if ambari-server is running
+      command: ambari-server status
+      register: server_status
+      failed_when: "'command not found' in server_status.stderr" 
+      changed_when: "'Ambari Server running' in server_status.stdout"
+
+    - name: Create group of servers
+      group_by: key=ambari_servers
+      when: 
+        - server_status is defined
+        - server_status.rc|int == 0
+
+    - name: Check that there is only 1 server running
+      fail:
+        msg: "There are multiple ambari-servers running - please use only one."
+      when: groups['ambari_servers'] | length != 1
+
+    - name: Check that there exists at least 1 agent running
+      fail:
+        msg: "There are no ambari-agents running - please use at least two (one master, one slave)."
+      when: groups['ambari_agents'] | length < 2
+
+- hosts: ambari_agents
+  tasks:
+
+    - name: Update the server hostname setting in ambari-agent.ini for each agent
+      ini_file:
+        dest: /etc/ambari-agent/conf/ambari-agent.ini
+        section: server
+        option: hostname
+        value: "{{ groups['ambari_servers'][0] }}"
+        state: present
+      register: agent_updated
+
+    - name: Restart ambari-agent service
+      service:
+        name: ambari-agent
+        state: restarted
+      when: agent_updated|changed
+
+- hosts: ambari_servers
+  vars:
+    ambari:
+      username: admin
+      password: admin
+      cluster_name: demo
+      stack_name: HDP
+      stack_version: 2.6
+      blueprint_name: multinode
+
+  tasks:
+
+    # Sort/filter containers so that they can be defined by their role in the cluster
+    - name: Sort list of ambari_agents
+      set_fact: 
+        nodes: "{{ groups['ambari_agents'] | sort }}"
+
+    - name: Copy ambari_config.json
+      template:
+        src: templates/ambari_config.json
+        dest: /opt/ambari_config.json
+
+    - name: Copy ambari_hosts.json
+      template:
+        src: templates/ambari_hosts.json
+        dest: /opt/ambari_hosts.json
+
+    - name: Get contents of ambari_config.json
+      command: cat /opt/ambari_config.json
+      register: config_output
+
+    - name: Get contents of ambari_hosts.json
+      command: cat /opt/ambari_hosts.json
+      register: hosts_output
+
+    - name: POST ambari_config.json to /api/v1/blueprints
+      uri:
+        url: "http://127.0.0.1:8080/api/v1/blueprints/{{ ambari['blueprint_name'] }}/?validate_topology=false"
+        method: POST
+        user: "{{ ambari['username'] }}"
+        password: "{{ ambari['password'] }}"
+        force_basic_auth: yes
+        body: "'{{ config_output.stdout }}'"
+        body_format: json
+        status_code: 201
+        headers:
+          X-Requested-By: "ambari-script"
+      register: blueprint_uploaded
+
+    - name: POST ambari_hosts.json to /api/v1/clusters
+      uri:
+        url: "http://127.0.0.1:8080/api/v1/clusters/{{ ambari['cluster_name'] }}"
+        method: POST
+        user: "{{ ambari['username'] }}"
+        password: "{{ ambari['password'] }}"
+        force_basic_auth: yes
+        body: "'{{ hosts_output.stdout }}'"
+        body_format: json
+        status_code: 202
+        return_content: yes
+        headers:
+          Content-Type: "application/json"
+          X-Requested-By: "ambari-script"
+      when: blueprint_uploaded|succeeded
+      register: create_cluster_response
+
+    - set_fact:
+        create_cluster_json: "{{ create_cluster_response.content | from_json }}"
+
+    - name: Sleep for 15 seconds
+      pause:
+        seconds: 15
+
+    - name: Poll to make sure the template is imported
+      uri:
+        url: "{{ create_cluster_json.href }}"
+        method: GET
+        user: "{{ ambari['username'] }}"
+        password: "{{ ambari['password'] }}"
+        force_basic_auth: yes
+        return_content: yes
+        headers:
+          Content-Type: application/json
+      register: import_status
+      until: '"IN_PROGRESS" not in import_status.content'
+      delay: 10
+      retries: 90
+
+    - set_fact:
+        import_status_json: "{{ import_status.content | from_json }}"
+
+    - name: Check that the import was successful
+      fail:
+        msg: "Import failed - check Ambari server for errors."
+      when: 
+        - import_status_json.Requests.request_status != 'COMPLETED'
+        - import_status_json.Requests.failed_task_count != 0

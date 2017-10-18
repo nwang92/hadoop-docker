@@ -1,0 +1,62 @@
+networks:
+  ambari_network:
+    driver: overlay
+    attachable: true
+services: 
+  server:
+    image: nwang92/ambari:latest
+    command: server
+    ports:
+      - "2222"
+      - "5432"
+      - "8080"
+      - "8441"
+      - "8670"
+
+  node1:
+    image: nwang92/ambari:latest
+    command: agent
+    ports:
+      - "2222"
+      - "8670"
+      - "3000"
+      - "8088"
+      - "19888"
+      - "50070"
+      - "50075"
+
+  node2:
+    image: nwang92/ambari:latest
+    command: agent
+    ports:
+      - "2222"
+      - "8670"
+      - "3000"
+      - "8088"
+      - "19888"
+      - "50070"
+      - "50075"
+
+  node3:
+    image: nwang92/ambari:latest
+    command: agent
+    ports:
+      - "2222"
+      - "8670"
+      - "3000"
+      - "8088"
+      - "19888"
+      - "50070"
+      - "50075"
+
+  node4:
+    image: nwang92/ambari:latest
+    command: agent
+    ports:
+      - "2222"
+      - "8670"
+      - "3000"
+      - "8088"
+      - "19888"
+      - "50070"
+      - "50075"

@@ -1,0 +1,247 @@
+---
+- hosts: all
+  tasks:
+
+    - name: Check if cloudera-scm-agent is running
+      command: service cloudera-scm-agent status
+      args:
+        warn: no
+      register: agent_status
+      failed_when: "'command not found' in agent_status.stderr"
+      changed_when: "'cloudera-scm-agent is running' in agent_status.stdout"
+
+    - name: Create group of agents
+      group_by: key=cdh_agents
+      when: 
+        - agent_status is defined
+        - agent_status.rc|int == 0
+
+    - name: Check if cloudera-scm-server is running
+      command: service cloudera-scm-server status
+      args:
+        warn: no
+      register: server_status
+      failed_when: "'command not found' in server_status.stderr" 
+      changed_when: "'cloudera-scm-server is running' in server_status.stdout"
+
+    - name: Create group of servers
+      group_by: key=cdh_servers
+      when: 
+        - server_status is defined
+        - server_status.rc|int == 0
+
+    - name: Check that there is only 1 server running
+      fail:
+        msg: "There are multiple cloudera-scm-servers running - please use only one."
+      when: groups['cdh_servers'] | length != 1
+
+    - name: Check that there exists at least 1 agent running
+      fail:
+        msg: "There are no cloudera-scm-agents running - please use at least two (one master, one slave)."
+      when: groups['cdh_agents'] | length < 2
+
+- hosts: cdh_agents
+  tasks:
+
+    - name: Set authorized key took from file
+      authorized_key:
+        user: root
+        state: present
+        key: "{{ lookup('file', './files/.ssh/authorized_keys') }}"
+
+    - name: Update the server hostname setting in ambari-agent.ini for each agent
+      ini_file:
+        dest: /etc/cloudera-scm-agent/config.ini
+        section: General
+        option: server_host
+        value: "{{ groups['cdh_servers'][0] }}"
+        state: present
+      register: agent_updated
+
+    - name: Restart cloudera-scm-agent service
+      service:
+        name: cloudera-scm-agent
+        state: restarted
+      when: agent_updated|changed
+
+- hosts: cdh_servers
+  vars:
+    cdh:
+      username: admin
+      password: admin
+      version: 5.12.0
+      product: CDH
+      product_version: 5.12.0-1.cdh5.12.0.p0.29
+      cluster_name: demo
+  tasks:
+
+    # Sort/filter containers so that they can be defined by their role in the cluster
+    - name: Sort list of cdh_agents
+      set_fact: 
+        nodes: "{{ groups['cdh_agents'] | sort }}"
+
+    # Setup password-less SSH between server + agents
+    - name: Create the .ssh directory
+      file:
+        path: /root/.ssh
+        state: directory
+        owner: root
+        group: root
+
+    - name: Upload SSH private key
+      copy:
+        src: "{{ playbook_dir }}/files/.ssh/id_rsa"
+        dest: /root/.ssh/id_rsa
+        owner: root
+        group: root
+        mode: 0600
+
+    - name: Upload SSH key
+      copy:
+        src: "{{ playbook_dir }}/files/.ssh/authorized_keys"
+        dest: /root/.ssh/id_rsa.pub
+        owner: root
+        group: root
+        mode: 0644
+
+    # Make sure the Cloudera Manager server + license is ready
+    - name: Wait for Cloudera Manager server to be ready
+      uri:
+        url: http://127.0.0.1:7180/api/v17/cm/version
+        method: GET
+        user: "{{ cdh.username }}"
+        password: "{{ cdh.password }}"
+        force_basic_auth: yes
+      register: manager_response
+      until: manager_response.status == 200 
+      retries: 20
+      delay: 3
+      ignore_errors: yes
+
+    - name: Enable trial license
+      uri:
+        url: http://127.0.0.1:7180/api/v17/cm/trial/begin
+        method: POST
+        user: "{{ cdh.username }}"
+        password: "{{ cdh.password }}"
+        force_basic_auth: yes
+        status_code: 204
+      ignore_errors: yes
+
+    # Setup Cloudera Management Services (Service Monitoring, Host Monitoring, etc.)
+    - name: Fetch db.mgmt.properties
+      fetch: 
+        src: /etc/cloudera-scm-server/db.mgmt.properties
+        dest: "{{ playbook_dir }}/tmp/db.mgmt.properties"
+        flat: yes
+        fail_on_missing: yes
+
+    - name: Define db passwords
+      set_fact:
+        amon_pw: "{{ lookup('ini', 'com.cloudera.cmf.ACTIVITYMONITOR.db.password type=properties file={{ playbook_dir }}/tmp/db.mgmt.properties') }}"
+        rman_pw: "{{ lookup('ini', 'com.cloudera.cmf.REPORTSMANAGER.db.password type=properties file={{ playbook_dir }}/tmp/db.mgmt.properties') }}"
+        nav_pw: "{{ lookup('ini', 'com.cloudera.cmf.NAVIGATOR.db.password type=properties file={{ playbook_dir }}/tmp/db.mgmt.properties') }}"
+        navms_pw: "{{ lookup('ini', 'com.cloudera.cmf.NAVIGATORMETASERVER.db.password type=properties file={{ playbook_dir }}/tmp/db.mgmt.properties') }}"
+
+    - name: Cleanup local copy of db.mgmt.properties
+      file:
+        path: "{{ playbook_dir }}/tmp/db.mgmt.properties"
+        state: absent
+      delegate_to: localhost
+
+    - name: Copy cms.json
+      template:
+        src: "{{ playbook_dir }}/templates/cms.json"
+        dest: /opt/cms.json
+
+    - name: Get contents of cms.json
+      command: cat /opt/cms.json
+      register: cms_output
+
+    - name: Setup the Cloudera Management Services (CMS)
+      uri:
+        url: http://127.0.0.1:7180/api/v17/cm/service
+        method: PUT
+        user: "{{ cdh.username }}"
+        password: "{{ cdh.password }}"
+        force_basic_auth: yes
+        body: "{{ cms_output.stdout | replace('\n', '') }}"
+        body_format: json
+        status_code: 200
+        return_content: yes
+        headers:
+          Content-Type: "application/json"
+      register: cms_resp
+      failed_when:
+        - "'MGMT' not in cms_resp.content"
+        - "'CMS instance already exists' not in cms_resp.content"
+
+    - name: Start Cloudera Management Services (CMS)
+      uri:
+        url: http://127.0.0.1:7180/api/v17/cm/service/commands/start
+        method: POST
+        status_code: 200
+        force_basic_auth: yes
+        user: "{{ cdh.username }}"
+        password: "{{ cdh.password }}"
+        return_content: yes
+      register: start_resp
+      failed_when: "'startTime' not in start_resp.content"
+
+    - name: Update parcel repo 
+      uri:
+        url: http://127.0.0.1:7180/api/v17/cm/config
+        method: PUT
+        user: "{{ cdh.username }}"
+        password: "{{ cdh.password }}"
+        force_basic_auth: yes
+        body: '{"items": [{"name": "remote_parcel_repo_urls", "value": "https://archive.cloudera.com/cdh5/parcels/{latest_supported}/,https://archive.cloudera.com/cdh4/parcels/latest/,https://archive.cloudera.com/impala/parcels/latest/,https://archive.cloudera.com/search/parcels/latest/,https://archive.cloudera.com/accumulo/parcels/1.4/,https://archive.cloudera.com/accumulo-c5/parcels/latest/,https://archive.cloudera.com/kafka/parcels/latest/,http://archive.cloudera.com/kudu/parcels/latest/,https://cloudera.com/downloads/,https://archive.cloudera.com/spark/parcels/latest/,https://archive.cloudera.com/sqoop-connectors/parcels/latest/,https://archive.cloudera.com/cdh5/parcels/{{ cdh.version }}"}]}'
+        body_format: json
+        status_code: 200
+        return_content: yes
+        headers:
+          Content-Type: "application/json"
+      register: parcel_repo_resp
+      ignore_errors: yes
+
+    - name: Copy cdh_config.json
+      template:
+        src: "{{ playbook_dir }}/templates/cdh_config.json"
+        dest: /opt/cdh_config.json
+
+    - name: Get contents of cdh_config.json
+      command: cat /opt/cdh_config.json
+      register: config_output
+
+    - name: Post CDH template
+      uri:
+        url: "http://127.0.0.1:7180/api/v17/cm/importClusterTemplate"
+        method: POST
+        user: "{{ cdh.username }}"
+        password: "{{ cdh.password }}"
+        force_basic_auth: yes
+        body: "{{ config_output.stdout | replace('\n', '') }}"
+        body_format: json
+        status_code: 200
+        return_content: yes
+        headers:
+          Content-Type: "application/json"
+      register: create_cluster_response
+
+    - name: Poll /api/v17/commands to make sure the template is imported
+      uri:
+        url: "http://127.0.0.1:7180/api/v17/commands/{{ create_cluster_response.json['id'] }}"
+        method: GET
+        user: "{{ cdh.username }}"
+        password: "{{ cdh.password }}"
+        force_basic_auth: yes
+        return_content: yes
+      register: import_status
+      until: import_status.json.success is defined
+      delay: 10
+      retries: 90
+
+    - name: Check that the import was successful
+      fail:
+        msg: "Import failed - check Cloudera Manager server for errors."
+      when: import_status.json.success == False
