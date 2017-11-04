@@ -46,12 +46,12 @@ For MAPR, the "server + agents" structure is not part of their installation mode
 
 For Hortonworks/Ambari, it is required to use 1 server role and a minimum of 2 agent roles. Using the same services template, The follow Hadoop services will be available with each of the following ports:
 
-Ambari Server: http://server:8080
-NameNode: http://node1:50070
-ResourceManager: http://node1:8088
-JobHistory: http://node1:19888
-Graphana: http://node1:3000
-DataNode: http://node[2:]:50075 (DataNode will be available on all nodes except node1)
+* Ambari Server: http://server:8080
+* NameNode: http://node1:50070
+* ResourceManager: http://node1:8088
+* JobHistory: http://node1:19888
+* Graphana: http://node1:3000
+* DataNode: http://node[2:]:50075 (DataNode will be available on all nodes except node1)
 
 **Cloudera/CDH**
 1) To install specific services on the Hadoop cluster, modify the components listed in templates/cdh_config.json. Components installed under "master-nodes" will get installed on the master node, and same with "slave-nodes".
@@ -60,18 +60,18 @@ DataNode: http://node[2:]:50075 (DataNode will be available on all nodes except 
 
 For Cloudera/CDH, it is required to use 1 server role and a minimum of 2 agent roles. Using the same services template, The follow Hadoop services will be available with each of the following ports:
 
-Cloudera Manager Server: http://server:7180
-NodeManager: http://node1:50070
-ResourceManager: http://node1:8088
-JobHistory: http://node1:19888
-DataNode: http://node[2:]:50075 (DataNode will be available on all nodes except node1)
+* Cloudera Manager Server: http://server:7180
+* NodeManager: http://node1:50070
+* ResourceManager: http://node1:8088
+* JobHistory: http://node1:19888
+* DataNode: http://node[2:]:50075 (DataNode will be available on all nodes except node1)
 
 All other Cloudera Management services will be hosted on node2, hence the requirement for at least 2 nodes.
 
 **MAPR**
 1) To bring up additional MAPR nodes for a larger deployments + clusters, modify the mapr.yml docker-compose file. Follow the existing template to add a new node, and make sure it is configured to run with a distinct hostname (hostname: nodeN).
 
-### Guides/Important Links/Generally Useful Shit ###
+### Guides/Important Links ###
 
 Hortonworks/Ambari:
 * https://docs.hortonworks.com/HDPDocuments/Ambari-2.5.1.0/bk_ambari-installation/content/install-ambari-server-ubuntu16.html
